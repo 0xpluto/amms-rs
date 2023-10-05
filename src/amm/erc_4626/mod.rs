@@ -1,14 +1,15 @@
 pub mod batch_request;
 
-use std::{cmp::Ordering, sync::Arc};
+use std::{cmp::Ordering, collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
 use ethers::{
     abi::RawLog,
     prelude::EthEvent,
     providers::Middleware,
-    types::{Log, H160, H256, U256},
+    types::{Diff, Log, H160, H256, U256},
 };
+use num_bigfloat::BigFloat;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -96,6 +97,10 @@ impl AutomatedMarketMaker for ERC4626Vault {
         Ok(())
     }
 
+    fn sync_from_storage(&mut self, _storage: &'_ BTreeMap<H256, Diff<H256>>) -> Option<()> {
+        todo!();
+    }
+
     async fn populate_data<M: Middleware>(
         &mut self,
         _block_number: Option<u64>,
@@ -136,11 +141,25 @@ impl AutomatedMarketMaker for ERC4626Vault {
         }
     }
 
+    fn gradient(&self, _token_in: H160, _amount_in: U256) -> Result<BigFloat, SwapSimulationError> {
+        todo!();
+    }
+
     fn get_token_out(&self, token_in: H160) -> H160 {
         if self.vault_token == token_in {
             self.asset_token
         } else {
             self.vault_token
+        }
+    }
+
+    fn opp_token(&self, token: H160) -> Option<H160> {
+        if self.vault_token == token {
+            Some(self.asset_token)
+        } else if self.asset_token == token {
+            Some(self.vault_token)
+        } else {
+            None
         }
     }
 }

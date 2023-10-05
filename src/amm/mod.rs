@@ -3,13 +3,14 @@ pub mod factory;
 pub mod uniswap_v2;
 pub mod uniswap_v3;
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
 use ethers::{
     providers::Middleware,
-    types::{Log, H160, H256, U256},
+    types::{Diff, Log, H160, H256, U256},
 };
+use num_bigfloat::BigFloat;
 use serde::{Deserialize, Serialize};
 
 use crate::errors::{AMMError, ArithmeticError, EventLogError, SwapSimulationError};
@@ -29,6 +30,7 @@ pub trait AutomatedMarketMaker {
         block_number: Option<u64>,
         middleware: Arc<M>,
     ) -> Result<(), AMMError<M>>;
+    fn sync_from_storage(&mut self, diff: &'_ BTreeMap<H256, Diff<H256>>) -> Option<()>;
 
     fn simulate_swap(&self, token_in: H160, amount_in: U256) -> Result<U256, SwapSimulationError>;
     fn simulate_swap_mut(
@@ -36,7 +38,9 @@ pub trait AutomatedMarketMaker {
         token_in: H160,
         amount_in: U256,
     ) -> Result<U256, SwapSimulationError>;
+    fn gradient(&self, token_in: H160, amount: U256) -> Result<BigFloat, SwapSimulationError>;
     fn get_token_out(&self, token_in: H160) -> H160;
+    fn opp_token(&self, token: H160) -> Option<H160>;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -80,6 +84,14 @@ impl AutomatedMarketMaker for AMM {
         }
     }
 
+    fn sync_from_storage(&mut self, diff: &'_ BTreeMap<H256, Diff<H256>>) -> Option<()> {
+        match self {
+            AMM::UniswapV2Pool(pool) => pool.sync_from_storage(diff),
+            AMM::UniswapV3Pool(pool) => pool.sync_from_storage(diff),
+            AMM::ERC4626Vault(vault) => vault.sync_from_storage(diff),
+        }
+    }
+
     fn simulate_swap(&self, token_in: H160, amount_in: U256) -> Result<U256, SwapSimulationError> {
         match self {
             AMM::UniswapV2Pool(pool) => pool.simulate_swap(token_in, amount_in),
@@ -100,11 +112,27 @@ impl AutomatedMarketMaker for AMM {
         }
     }
 
+    fn gradient(&self, token_in: H160, amount_in: U256) -> Result<BigFloat, SwapSimulationError> {
+        match self {
+            AMM::UniswapV2Pool(pool) => pool.gradient(token_in, amount_in),
+            AMM::UniswapV3Pool(pool) => pool.gradient(token_in, amount_in),
+            AMM::ERC4626Vault(vault) => vault.gradient(token_in, amount_in),
+        }
+    }
+
     fn get_token_out(&self, token_in: H160) -> H160 {
         match self {
             AMM::UniswapV2Pool(pool) => pool.get_token_out(token_in),
             AMM::UniswapV3Pool(pool) => pool.get_token_out(token_in),
             AMM::ERC4626Vault(vault) => vault.get_token_out(token_in),
+        }
+    }
+
+    fn opp_token(&self, token_in: H160) -> Option<H160> {
+        match self {
+            AMM::UniswapV2Pool(pool) => pool.opp_token(token_in),
+            AMM::UniswapV3Pool(pool) => pool.opp_token(token_in),
+            AMM::ERC4626Vault(vault) => vault.opp_token(token_in),
         }
     }
 
@@ -134,5 +162,11 @@ impl AutomatedMarketMaker for AMM {
             AMM::UniswapV3Pool(pool) => pool.calculate_price(base_token),
             AMM::ERC4626Vault(vault) => vault.calculate_price(base_token),
         }
+    }
+}
+
+impl PartialEq for AMM {
+    fn eq(&self, other: &Self) -> bool {
+        self.address() == other.address()
     }
 }

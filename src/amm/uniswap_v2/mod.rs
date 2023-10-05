@@ -1,16 +1,16 @@
 pub mod batch_request;
 pub mod factory;
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
 use ethers::{
     abi::{ethabi::Bytes, RawLog, Token},
     prelude::EthEvent,
     providers::Middleware,
-    types::{Log, H160, H256, U256},
+    types::{Diff, Log, H160, H256, U256, U512},
 };
-use num_bigfloat::BigFloat;
+use num_bigfloat::{BigFloat, TWO, ZERO};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -43,6 +43,9 @@ pub const U128_0X10000000000000000: u128 = 18446744073709551616;
 pub const SYNC_EVENT_SIGNATURE: H256 = H256([
     28, 65, 30, 154, 150, 224, 113, 36, 28, 47, 33, 247, 114, 107, 23, 174, 137, 227, 202, 180,
     199, 139, 229, 14, 6, 43, 3, 169, 255, 251, 186, 209,
+]);
+const RESERVES_STORAGE_SLOT: H256 = H256([
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8,
 ]);
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -97,6 +100,33 @@ impl AutomatedMarketMaker for UniswapV2Pool {
             Err(EventLogError::InvalidEventSignature)
         }
     }
+
+    fn sync_from_storage(&mut self, storage: &'_ BTreeMap<H256, Diff<H256>>) -> Option<()> {
+        let storage = storage.get(&RESERVES_STORAGE_SLOT)?;
+
+        let value = match storage {
+            Diff::Same => None,
+            Diff::Born(_) => None,
+            Diff::Died(_) => None,
+            Diff::Changed(val) => Some(val.to.as_fixed_bytes()),
+        }?;
+
+        let mut reserves0 = value[4..18].to_vec();
+        while reserves0.len() < 16 {
+            reserves0.insert(0, 0);
+        }
+        let mut reserves1 = value[18..32].to_vec();
+        while reserves1.len() < 16 {
+            reserves1.insert(0, 0);
+        }
+
+        // These unwraps are safe due to precise indexing
+        self.reserve_0 = u128::from_be_bytes(reserves0.try_into().unwrap());
+        self.reserve_1 = u128::from_be_bytes(reserves1.try_into().unwrap());
+
+        Some(())
+    }
+
     //Calculates base/quote, meaning the price of base token per quote (ie. exchange rate is X base per 1 quote)
     fn calculate_price(&self, base_token: H160) -> Result<f64, ArithmeticError> {
         Ok(q64_to_f64(self.calculate_price_64_x_64(base_token)?))
@@ -152,11 +182,36 @@ impl AutomatedMarketMaker for UniswapV2Pool {
         }
     }
 
+    fn gradient(&self, token_in: H160, amount_in: U256) -> Result<BigFloat, SwapSimulationError> {
+        let res0 = U256::from(self.reserve_0);
+        let res1 = U256::from(self.reserve_1);
+        let (res_in, res_out) = if self.token_a == token_in {
+            (res0, res1)
+        } else {
+            (res1, res0)
+        };
+        let num = mul_uu_to_f64(res_in, res_out) * BigFloat::from(997f64);
+        let amount_in_with_fee = (amount_in * 997) / 1000;
+        let denom = uu_sqr(res_in + amount_in_with_fee) * BigFloat::from(1000f64);
+
+        Ok(num / denom)
+    }
+
     fn get_token_out(&self, token_in: H160) -> H160 {
         if self.token_a == token_in {
             self.token_b
         } else {
             self.token_a
+        }
+    }
+
+    fn opp_token(&self, token_in: H160) -> Option<H160> {
+        if self.token_a == token_in {
+            Some(self.token_b)
+        } else if self.token_b == token_in {
+            Some(self.token_a)
+        } else {
+            None
         }
     }
 }
@@ -475,7 +530,7 @@ pub fn div_uu(x: U256, y: U256) -> Result<u128, ArithmeticError> {
         }
 
         answer += xl / y;
-
+        //0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
         if answer > U256_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF {
             return Err(ArithmeticError::ShadowOverflow(answer));
         }
@@ -484,6 +539,50 @@ pub fn div_uu(x: U256, y: U256) -> Result<u128, ArithmeticError> {
     } else {
         Err(ArithmeticError::YIsZero)
     }
+}
+
+const U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF: U512 =
+    U512([18446744073709551615, 18446744073709551615, 0, 0, 0, 0, 0, 0]);
+
+const U512_384: U512 = U512([384, 0, 0, 0, 0, 0, 0, 0]);
+const U512_256: U512 = U512([256, 0, 0, 0, 0, 0, 0, 0]);
+const U512_128: U512 = U512([128, 0, 0, 0, 0, 0, 0, 0]);
+
+fn mul_uu_to_f64(x: U256, y: U256) -> BigFloat {
+    if x.is_zero() || y.is_zero() {
+        return ZERO;
+    }
+    let result = x.full_mul(y);
+
+    let a = (result >> U512_384).as_u128();
+    let b = ((result >> U512_256) & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
+    let c = ((result >> U512_128) & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
+    let d = (result & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
+
+    let af = BigFloat::from(a) * TWO.pow(&BigFloat::from(384.0));
+    let bf = BigFloat::from(b) * TWO.pow(&BigFloat::from(256.0));
+    let cf = BigFloat::from(c) * TWO.pow(&BigFloat::from(128.0));
+    let df = BigFloat::from(d);
+
+    af + bf + cf + df
+}
+
+fn uu_sqr(x: U256) -> BigFloat {
+    u512_to_f64(x.full_mul(x))
+}
+
+fn u512_to_f64(x: U512) -> BigFloat {
+    let a = (x >> U512_384).as_u128();
+    let b = ((x >> U512_256) & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
+    let c = ((x >> U512_128) & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
+    let d = (x & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
+
+    let af = BigFloat::from(a) * TWO.pow(&BigFloat::from(384.0));
+    let bf = BigFloat::from(b) * TWO.pow(&BigFloat::from(256.0));
+    let cf = BigFloat::from(c) * TWO.pow(&BigFloat::from(128.0));
+    let df = BigFloat::from(d);
+
+    af + bf + cf + df
 }
 
 //Converts a Q64 fixed point to a Q16 fixed point -> f64

@@ -9,6 +9,7 @@ use ethers::{providers::Middleware, types::H160};
 
 use serde::{Deserialize, Serialize};
 
+use spinoff::{spinners, Color, Spinner};
 use tokio::task::JoinHandle;
 
 use crate::{
@@ -62,6 +63,12 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
 
     let checkpoint: Checkpoint =
         serde_json::from_str(read_to_string(path_to_checkpoint)?.as_str())?;
+
+    let spinner = Spinner::new(
+        spinners::Dots,
+        format!("Syncing AMMs from block: {}", checkpoint.block_number),
+        Color::Blue,
+    );
 
     //Sort all of the pools from the checkpoint into uniswap_v2_pools and uniswap_v3_pools pools so we can sync them concurrently
     let (uniswap_v2_pools, uniswap_v3_pools, erc_4626_pools) = sort_amms(checkpoint.amms);
@@ -134,6 +141,7 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
         current_block,
         path_to_checkpoint,
     )?;
+    spinner.success("AMMs synced");
 
     Ok((checkpoint.factories, aggregated_amms))
 }

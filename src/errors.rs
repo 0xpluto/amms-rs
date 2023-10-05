@@ -59,6 +59,8 @@ where
     BatchRequestError(H160),
     #[error("Checkpoint error")]
     CheckpointError(#[from] CheckpointError),
+    #[error("Invalid token address")]
+    InvalidTokenAddress,
 }
 
 #[derive(Error, Debug)]
