@@ -8,7 +8,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use async_trait::async_trait;
 use ethers::{
     providers::Middleware,
-    types::{Diff, Log, H160, H256, U256},
+    types::{Log, H160, H256, U256},
 };
 use num_bigfloat::BigFloat;
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,9 @@ pub trait AutomatedMarketMaker {
         block_number: Option<u64>,
         middleware: Arc<M>,
     ) -> Result<(), AMMError<M>>;
-    fn sync_from_storage(&mut self, diff: &'_ BTreeMap<H256, Diff<H256>>) -> Option<()>;
+    fn sync_from_storage(&mut self, diff: &'_ BTreeMap<H256, H256>) -> Option<()>;
+
+    fn reserves(&self) -> BTreeMap<H256, H256>;
 
     fn simulate_swap(&self, token_in: H160, amount_in: U256) -> Result<U256, SwapSimulationError>;
     fn simulate_swap_mut(
@@ -84,11 +86,19 @@ impl AutomatedMarketMaker for AMM {
         }
     }
 
-    fn sync_from_storage(&mut self, diff: &'_ BTreeMap<H256, Diff<H256>>) -> Option<()> {
+    fn sync_from_storage(&mut self, diff: &'_ BTreeMap<H256, H256>) -> Option<()> {
         match self {
             AMM::UniswapV2Pool(pool) => pool.sync_from_storage(diff),
             AMM::UniswapV3Pool(pool) => pool.sync_from_storage(diff),
             AMM::ERC4626Vault(vault) => vault.sync_from_storage(diff),
+        }
+    }
+
+    fn reserves(&self) -> BTreeMap<H256, H256> {
+        match self {
+            AMM::UniswapV2Pool(pool) => pool.reserves(),
+            AMM::UniswapV3Pool(pool) => pool.reserves(),
+            AMM::ERC4626Vault(vault) => vault.reserves(),
         }
     }
 

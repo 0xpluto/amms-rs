@@ -96,9 +96,14 @@ impl AutomatedMarketMakerFactory for UniswapV3Factory {
         amms: &mut [AMM],
         block_number: Option<u64>,
         middleware: Arc<M>,
+        step: u64,
     ) -> Result<(), AMMError<M>> {
         if let Some(block_number) = block_number {
-            let step = 127; //Max batch size for call
+            let step: usize = if step > 127 {
+                127 //Max batch size for call
+            } else {
+                step as usize
+            };
             for amm_chunk in amms.chunks_mut(step) {
                 batch_request::get_amm_data_batch_request(
                     amm_chunk,

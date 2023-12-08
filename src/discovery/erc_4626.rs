@@ -5,7 +5,6 @@ use ethers::{
     types::{Filter, U256},
 };
 use regex::Regex;
-use spinoff::{spinners, Color, Spinner};
 
 use crate::{
     amm::erc_4626::{ERC4626Vault, DEPOSIT_EVENT_SIGNATURE, WITHDRAW_EVENT_SIGNATURE},
@@ -21,12 +20,6 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
     middleware: Arc<M>,
     step: u64,
 ) -> Result<Vec<ERC4626Vault>, AMMError<M>> {
-    let spinner = Spinner::new(
-        spinners::Dots,
-        "Discovering new ERC 4626 vaults...",
-        Color::Blue,
-    );
-
     let block_filter =
         Filter::new().topic0(vec![DEPOSIT_EVENT_SIGNATURE, WITHDRAW_EVENT_SIGNATURE]);
 
@@ -114,6 +107,5 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
         }
     }
 
-    spinner.success("All vaults discovered");
     Ok(vaults)
 }

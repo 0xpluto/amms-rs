@@ -7,7 +7,7 @@ use ethers::{
     abi::RawLog,
     prelude::EthEvent,
     providers::Middleware,
-    types::{Diff, Log, H160, H256, U256},
+    types::{Log, H160, H256, U256},
 };
 use num_bigfloat::BigFloat;
 use serde::{Deserialize, Serialize};
@@ -97,8 +97,12 @@ impl AutomatedMarketMaker for ERC4626Vault {
         Ok(())
     }
 
-    fn sync_from_storage(&mut self, _storage: &'_ BTreeMap<H256, Diff<H256>>) -> Option<()> {
+    fn sync_from_storage(&mut self, _storage: &'_ BTreeMap<H256, H256>) -> Option<()> {
         todo!();
+    }
+
+    fn reserves(&self) -> BTreeMap<H256, H256> {
+        todo!()
     }
 
     async fn populate_data<M: Middleware>(

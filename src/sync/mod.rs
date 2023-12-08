@@ -18,7 +18,7 @@ pub async fn sync_amms<M: 'static + Middleware>(
     checkpoint_path: Option<&str>,
     step: u64,
 ) -> Result<(Vec<AMM>, u64), AMMError<M>> {
-    let spinner = Spinner::new(spinners::Dots, "Syncing AMMs...", Color::Blue);
+    let mut spinner = Spinner::new(spinners::Dots, "Syncing AMMs...", Color::Blue);
 
     let current_block = middleware
         .get_block_number()
@@ -40,7 +40,7 @@ pub async fn sync_amms<M: 'static + Middleware>(
             let mut amms: Vec<AMM> = factory
                 .get_all_amms(Some(current_block), middleware.clone(), step)
                 .await?;
-            populate_amms(&mut amms, current_block, middleware.clone()).await?;
+            populate_amms(&mut amms, current_block, middleware.clone(), step).await?;
 
             //Clean empty pools
             amms = remove_empty_amms(amms);
@@ -104,11 +104,16 @@ pub async fn populate_amms<M: Middleware>(
     amms: &mut [AMM],
     block_number: u64,
     middleware: Arc<M>,
+    step: u64,
 ) -> Result<(), AMMError<M>> {
     if amms_are_congruent(amms) {
         match amms[0] {
             AMM::UniswapV2Pool(_) => {
-                let step = 127; //Max batch size for call
+                let step = if step > 127 {
+                    127 //Max batch size for call
+                } else {
+                    step as usize
+                };
                 for amm_chunk in amms.chunks_mut(step) {
                     uniswap_v2::batch_request::get_amm_data_batch_request(
                         amm_chunk,
@@ -119,7 +124,11 @@ pub async fn populate_amms<M: Middleware>(
             }
 
             AMM::UniswapV3Pool(_) => {
-                let step = 76; //Max batch size for call
+                let step = if step > 76 {
+                    76 //Max batch size for call
+                } else {
+                    step as usize
+                };
                 for amm_chunk in amms.chunks_mut(step) {
                     uniswap_v3::batch_request::get_amm_data_batch_request(
                         amm_chunk,

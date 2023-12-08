@@ -8,7 +8,7 @@ use ethers::{
     abi::{ethabi::Bytes, RawLog, Token},
     prelude::EthEvent,
     providers::Middleware,
-    types::{Diff, Log, H160, H256, U256, U512},
+    types::{Log, H160, H256, U256, U512},
 };
 use num_bigfloat::{BigFloat, TWO, ZERO};
 use serde::{Deserialize, Serialize};
@@ -44,6 +44,17 @@ pub const SYNC_EVENT_SIGNATURE: H256 = H256([
     28, 65, 30, 154, 150, 224, 113, 36, 28, 47, 33, 247, 114, 107, 23, 174, 137, 227, 202, 180,
     199, 139, 229, 14, 6, 43, 3, 169, 255, 251, 186, 209,
 ]);
+
+pub const MINT_EVENT_SIGNATURE: H256 = H256([
+    76, 32, 155, 95, 200, 173, 80, 117, 143, 19, 226, 225, 8, 139, 165, 106, 86, 13, 255, 105, 10,
+    28, 111, 239, 38, 57, 79, 76, 3, 130, 28, 79,
+]);
+
+pub const BURN_EVENT_SIGNATURE: H256 = H256([
+    220, 205, 65, 47, 11, 18, 82, 129, 156, 177, 253, 51, 11, 147, 34, 76, 164, 38, 18, 137, 43,
+    179, 244, 247, 137, 151, 110, 109, 129, 147, 100, 150,
+]);
+
 const RESERVES_STORAGE_SLOT: H256 = H256([
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8,
 ]);
@@ -101,23 +112,19 @@ impl AutomatedMarketMaker for UniswapV2Pool {
         }
     }
 
-    fn sync_from_storage(&mut self, storage: &'_ BTreeMap<H256, Diff<H256>>) -> Option<()> {
-        let storage = storage.get(&RESERVES_STORAGE_SLOT)?;
+    /// Only updates the reserves, does not fill other pool values
+    ///
+    /// This should be used for speedy syncs, where we only need to update the reserves
+    fn sync_from_storage(&mut self, storage: &'_ BTreeMap<H256, H256>) -> Option<()> {
+        let value = storage.get(&RESERVES_STORAGE_SLOT)?;
 
-        let value = match storage {
-            Diff::Same => None,
-            Diff::Born(_) => None,
-            Diff::Died(_) => None,
-            Diff::Changed(val) => Some(val.to.as_fixed_bytes()),
-        }?;
-
-        let mut reserves0 = value[4..18].to_vec();
-        while reserves0.len() < 16 {
-            reserves0.insert(0, 0);
-        }
-        let mut reserves1 = value[18..32].to_vec();
+        let mut reserves1 = value[4..18].to_vec();
         while reserves1.len() < 16 {
             reserves1.insert(0, 0);
+        }
+        let mut reserves0 = value[18..32].to_vec();
+        while reserves0.len() < 16 {
+            reserves0.insert(0, 0);
         }
 
         // These unwraps are safe due to precise indexing
@@ -125,6 +132,24 @@ impl AutomatedMarketMaker for UniswapV2Pool {
         self.reserve_1 = u128::from_be_bytes(reserves1.try_into().unwrap());
 
         Some(())
+    }
+
+    fn reserves(&self) -> BTreeMap<H256, H256> {
+        let res0 = self.reserve_0.to_be_bytes();
+        let res1 = self.reserve_1.to_be_bytes();
+
+        let mut value = [0u8; 32];
+
+        value[4..18].copy_from_slice(&res1[2..]);
+        value[18..32].copy_from_slice(&res0[2..]);
+
+        let data = H256::from(value);
+
+        let mut reserves = BTreeMap::new();
+
+        reserves.insert(RESERVES_STORAGE_SLOT, data);
+
+        reserves
     }
 
     //Calculates base/quote, meaning the price of base token per quote (ie. exchange rate is X base per 1 quote)
@@ -413,6 +438,18 @@ impl UniswapV2Pool {
         let denominator = reserve_in * U256::from(1000) + amount_in_with_fee;
 
         numerator / denominator
+    }
+
+    pub fn get_amount_in(&self, amount_out: U256, reserve_in: U256, reserve_out: U256) -> U256 {
+        if amount_out.is_zero() || reserve_in.is_zero() || reserve_out.is_zero() {
+            return U256::zero();
+        }
+        let fee = (10000 - (self.fee / 10)) / 10; //Fee of 300 => (10,000 - 30) / 10  = 997
+        let amount_out = amount_out * U256::from(1000);
+        let numerator = reserve_in * amount_out;
+        let denominator = (reserve_out - amount_out) * U256::from(fee);
+
+        (numerator / denominator) + U256::one()
     }
 
     pub fn swap_calldata(

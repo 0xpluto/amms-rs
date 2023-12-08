@@ -9,7 +9,6 @@ use ethers::{providers::Middleware, types::H160};
 
 use serde::{Deserialize, Serialize};
 
-use spinoff::{spinners, Color, Spinner};
 use tokio::task::JoinHandle;
 
 use crate::{
@@ -64,12 +63,6 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
     let checkpoint: Checkpoint =
         serde_json::from_str(read_to_string(path_to_checkpoint)?.as_str())?;
 
-    let spinner = Spinner::new(
-        spinners::Dots,
-        format!("Syncing AMMs from block: {}", checkpoint.block_number),
-        Color::Blue,
-    );
-
     //Sort all of the pools from the checkpoint into uniswap_v2_pools and uniswap_v3_pools pools so we can sync them concurrently
     let (uniswap_v2_pools, uniswap_v3_pools, erc_4626_pools) = sort_amms(checkpoint.amms);
 
@@ -83,6 +76,7 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
                 uniswap_v2_pools,
                 Some(current_block),
                 middleware.clone(),
+                step,
             )
             .await,
         );
@@ -95,6 +89,7 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
                 uniswap_v3_pools,
                 Some(current_block),
                 middleware.clone(),
+                step,
             )
             .await,
         );
@@ -108,7 +103,7 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
         );
     }
 
-    //Sync all pools from the since synced block
+    // Sync all pools from the since synced block
     handles.extend(
         get_new_amms_from_range(
             checkpoint.factories.clone(),
@@ -125,6 +120,7 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
             Ok(sync_result) => aggregated_amms.extend(sync_result?),
             Err(err) => {
                 {
+                    println!("Error collecting threads");
                     if err.is_panic() {
                         // Resume the panic on the main task
                         resume_unwind(err.into_panic());
@@ -141,7 +137,6 @@ pub async fn sync_amms_from_checkpoint<M: 'static + Middleware>(
         current_block,
         path_to_checkpoint,
     )?;
-    spinner.success("AMMs synced");
 
     Ok((checkpoint.factories, aggregated_amms))
 }
@@ -167,7 +162,7 @@ pub async fn get_new_amms_from_range<M: 'static + Middleware>(
                 .await?;
 
             factory
-                .populate_amm_data(&mut amms, Some(to_block), middleware.clone())
+                .populate_amm_data(&mut amms, Some(to_block), middleware.clone(), step)
                 .await?;
 
             //Clean empty pools
@@ -184,6 +179,7 @@ pub async fn batch_sync_amms_from_checkpoint<M: 'static + Middleware>(
     mut amms: Vec<AMM>,
     block_number: Option<u64>,
     middleware: Arc<M>,
+    step: u64,
 ) -> JoinHandle<Result<Vec<AMM>, AMMError<M>>> {
     let factory = match amms[0] {
         AMM::UniswapV2Pool(_) => Some(Factory::UniswapV2Factory(UniswapV2Factory::new(
@@ -206,8 +202,9 @@ pub async fn batch_sync_amms_from_checkpoint<M: 'static + Middleware>(
             if amms_are_congruent(&amms) {
                 //Get all pool data via batched calls
                 factory
-                    .populate_amm_data(&mut amms, block_number, middleware)
-                    .await?;
+                    .populate_amm_data(&mut amms, block_number, middleware, step)
+                    .await
+                    .expect("batch sync amms from checkpoint");
 
                 //Clean empty pools
                 amms = sync::remove_empty_amms(amms);
@@ -258,7 +255,7 @@ pub async fn get_new_pools_from_range<M: 'static + Middleware>(
                 .await?;
 
             factory
-                .populate_amm_data(&mut pools, Some(to_block), middleware.clone())
+                .populate_amm_data(&mut pools, Some(to_block), middleware.clone(), step)
                 .await?;
 
             //Clean empty pools

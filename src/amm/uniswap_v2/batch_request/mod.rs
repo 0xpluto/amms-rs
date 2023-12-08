@@ -51,8 +51,16 @@ pub async fn get_pairs_batch_request<M: Middleware>(
         Token::Address(factory),
     ]);
 
-    let deployer = IGetUniswapV2PairsBatchRequest::deploy(middleware, constructor_args)?;
-    let return_data: Bytes = deployer.call_raw().await?;
+    let deployer = IGetUniswapV2PairsBatchRequest::deploy(middleware, constructor_args.clone())?;
+    let return_data: Bytes = match deployer.call_raw().await {
+        Ok(data) => data,
+        Err(e) => panic!(
+            "Error ({:?}) calling v2 pool data for {} to {}",
+            e,
+            from,
+            from + step
+        ),
+    };
 
     let return_data_tokens = ethers::abi::decode(
         &[ParamType::Array(Box::new(ParamType::Address))],
@@ -83,7 +91,7 @@ pub async fn get_amm_data_batch_request<M: Middleware>(
         target_addresses.push(Token::Address(amm.address()));
     }
 
-    let constructor_args = Token::Tuple(vec![Token::Array(target_addresses)]);
+    let constructor_args = Token::Tuple(vec![Token::Array(target_addresses.clone())]);
 
     let deployer = IGetUniswapV2PoolDataBatchRequest::deploy(middleware.clone(), constructor_args)?;
 
@@ -139,9 +147,16 @@ pub async fn get_v2_pool_data_batch_request<M: Middleware>(
 ) -> Result<(), AMMError<M>> {
     let constructor_args = Token::Tuple(vec![Token::Array(vec![Token::Address(pool.address)])]);
 
-    let deployer = IGetUniswapV2PoolDataBatchRequest::deploy(middleware.clone(), constructor_args)?;
+    let deployer =
+        IGetUniswapV2PoolDataBatchRequest::deploy(middleware.clone(), constructor_args.clone())?;
 
-    let return_data: Bytes = deployer.call_raw().await?;
+    let return_data: Bytes = match deployer.call_raw().await {
+        Ok(data) => data,
+        Err(e) => panic!(
+            "Error ({:?}) calling v2 pool data for {:?}",
+            e, constructor_args
+        ),
+    };
     let return_data_tokens = ethers::abi::decode(
         &[ParamType::Array(Box::new(ParamType::Tuple(vec![
             ParamType::Address,   // token a

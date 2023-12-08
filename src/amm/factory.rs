@@ -34,6 +34,7 @@ pub trait AutomatedMarketMakerFactory {
         amms: &mut [AMM],
         block_number: Option<u64>,
         middleware: Arc<M>,
+        step: u64,
     ) -> Result<(), AMMError<M>>;
 
     fn amm_created_event_signature(&self) -> H256;
@@ -110,14 +111,17 @@ impl AutomatedMarketMakerFactory for Factory {
         amms: &mut [AMM],
         block_number: Option<u64>,
         middleware: Arc<M>,
+        step: u64,
     ) -> Result<(), AMMError<M>> {
         match self {
             Factory::UniswapV2Factory(factory) => {
-                factory.populate_amm_data(amms, None, middleware).await
+                factory
+                    .populate_amm_data(amms, None, middleware, step)
+                    .await
             }
             Factory::UniswapV3Factory(factory) => {
                 factory
-                    .populate_amm_data(amms, block_number, middleware)
+                    .populate_amm_data(amms, block_number, middleware, step)
                     .await
             }
         }

@@ -16,7 +16,7 @@ use ethers::{
     abi::{ethabi::Bytes, RawLog, Token},
     prelude::{AbiError, EthEvent},
     providers::Middleware,
-    types::{BlockNumber, Diff, Filter, Log, H160, H256, I256, U256, U64},
+    types::{BlockNumber, Filter, Log, H160, H256, I256, U256, U64},
 };
 use num_bigfloat::BigFloat;
 use serde::{Deserialize, Serialize};
@@ -153,8 +153,12 @@ impl AutomatedMarketMaker for UniswapV3Pool {
         Ok(())
     }
 
-    fn sync_from_storage(&mut self, _storage: &'_ BTreeMap<H256, Diff<H256>>) -> Option<()> {
+    fn sync_from_storage(&mut self, _storage: &'_ BTreeMap<H256, H256>) -> Option<()> {
         todo!();
+    }
+
+    fn reserves(&self) -> BTreeMap<H256, H256> {
+        todo!()
     }
 
     fn tokens(&self) -> Vec<H160> {
