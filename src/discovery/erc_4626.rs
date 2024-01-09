@@ -20,8 +20,11 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
     middleware: Arc<M>,
     step: u64,
 ) -> Result<Vec<ERC4626Vault>, AMMError<M>> {
-    let block_filter =
-        Filter::new().topic0(vec![DEPOSIT_EVENT_SIGNATURE, WITHDRAW_EVENT_SIGNATURE]);
+    tracing::info!(step, "discovering new ERC 4626 vaults");
+
+    let event_signatures = vec![DEPOSIT_EVENT_SIGNATURE, WITHDRAW_EVENT_SIGNATURE];
+    let block_filter = Filter::new().topic0(event_signatures.clone());
+    tracing::trace!(?event_signatures);
 
     let current_block = middleware
         .get_block_number()
@@ -42,6 +45,8 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
             to_block = current_block;
         }
 
+        tracing::info!("searching blocks {}-{}", from_block, to_block);
+
         let block_filter = block_filter.clone();
         //TODO: use a better method, this is just quick and scrappy
         let fallback_block_filter = block_filter.clone();
@@ -55,6 +60,8 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
                 logs
             }
             Err(err) => {
+                tracing::warn!("error getting logs");
+
                 let mut block_range = Vec::new();
                 for m in HEX_REGEX.find_iter(&err.to_string()) {
                     let value = U256::from_str(m.as_str()).map_err(|_| AMMError::FromHexError)?;
@@ -64,6 +71,11 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
                 if block_range.is_empty() {
                     return Err(AMMError::MiddlewareError(err));
                 } else {
+                    tracing::warn!(
+                        "getting logs from blocks {}-{} instead",
+                        block_range[0],
+                        block_range[1]
+                    );
                     let logs = middleware
                         .get_logs(
                             &fallback_block_filter
@@ -82,8 +94,10 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
 
         for log in logs {
             if log.topics[0] == DEPOSIT_EVENT_SIGNATURE {
+                tracing::info!(address = ?log.address, "deposit event found");
                 adheres_to_deposit_event.insert(log.address);
             } else if log.topics[0] == WITHDRAW_EVENT_SIGNATURE {
+                tracing::info!(address = ?log.address, "withdraw event found");
                 adheres_to_withdraw_event.insert(log.address);
             }
         }
@@ -91,6 +105,7 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
 
     for address in adheres_to_deposit_event.iter() {
         if adheres_to_withdraw_event.contains(address) {
+            tracing::info!(?address, "found a pair of matching deposit/withdraw events");
             identified_addresses.insert(address);
         }
     }
@@ -107,5 +122,6 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
         }
     }
 
+    tracing::info!("all vaults discovered");
     Ok(vaults)
 }

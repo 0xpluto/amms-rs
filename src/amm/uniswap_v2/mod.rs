@@ -8,9 +8,9 @@ use ethers::{
     abi::{ethabi::Bytes, RawLog, Token},
     prelude::EthEvent,
     providers::Middleware,
-    types::{Log, H160, H256, U256, U512},
+    types::{Log, H160, H256, U256},
 };
-use num_bigfloat::{BigFloat, TWO, ZERO};
+use num_bigfloat::BigFloat;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -162,6 +162,8 @@ impl AutomatedMarketMaker for UniswapV2Pool {
     }
 
     fn simulate_swap(&self, token_in: H160, amount_in: U256) -> Result<U256, SwapSimulationError> {
+        tracing::info!(?token_in, ?amount_in, "simulating swap");
+
         if self.token_a == token_in {
             Ok(self.get_amount_out(
                 amount_in,
@@ -182,6 +184,8 @@ impl AutomatedMarketMaker for UniswapV2Pool {
         token_in: H160,
         amount_in: U256,
     ) -> Result<U256, SwapSimulationError> {
+        tracing::info!(?token_in, ?amount_in, "simulating swap");
+
         if self.token_a == token_in {
             let amount_out = self.get_amount_out(
                 amount_in,
@@ -189,8 +193,13 @@ impl AutomatedMarketMaker for UniswapV2Pool {
                 U256::from(self.reserve_1),
             );
 
+            tracing::trace!(?amount_out);
+            tracing::trace!(?self.reserve_0, ?self.reserve_1, "pool reserves before");
+
             self.reserve_0 += amount_in.as_u128();
             self.reserve_1 -= amount_out.as_u128();
+
+            tracing::trace!(?self.reserve_0, ?self.reserve_1, "pool reserves after");
 
             Ok(amount_out)
         } else {
@@ -200,26 +209,16 @@ impl AutomatedMarketMaker for UniswapV2Pool {
                 U256::from(self.reserve_0),
             );
 
+            tracing::trace!(?amount_out);
+            tracing::trace!(?self.reserve_0, ?self.reserve_1, "pool reserves before");
+
             self.reserve_0 -= amount_out.as_u128();
             self.reserve_1 += amount_in.as_u128();
 
+            tracing::trace!(?self.reserve_0, ?self.reserve_1, "pool reserves after");
+
             Ok(amount_out)
         }
-    }
-
-    fn gradient(&self, token_in: H160, amount_in: U256) -> Result<BigFloat, SwapSimulationError> {
-        let res0 = U256::from(self.reserve_0);
-        let res1 = U256::from(self.reserve_1);
-        let (res_in, res_out) = if self.token_a == token_in {
-            (res0, res1)
-        } else {
-            (res1, res0)
-        };
-        let num = mul_uu_to_f64(res_in, res_out) * BigFloat::from(997f64);
-        let amount_in_with_fee = (amount_in * 997) / 1000;
-        let denom = uu_sqr(res_in + amount_in_with_fee) * BigFloat::from(1000f64);
-
-        Ok(num / denom)
     }
 
     fn get_token_out(&self, token_in: H160) -> H160 {
@@ -341,6 +340,8 @@ impl UniswapV2Pool {
         &self,
         middleware: Arc<M>,
     ) -> Result<(u128, u128), AMMError<M>> {
+        tracing::trace!("getting reserves of {}", self.address);
+
         //Initialize a new instance of the Pool
         let v2_pair = IUniswapV2Pair::new(self.address, middleware);
         // Make a call to get the reserves
@@ -348,6 +349,8 @@ impl UniswapV2Pool {
             Ok(result) => result,
             Err(contract_error) => return Err(AMMError::ContractError(contract_error)),
         };
+
+        tracing::trace!(reserve_0, reserve_1);
 
         Ok((reserve_0, reserve_1))
     }
@@ -365,6 +368,8 @@ impl UniswapV2Pool {
             .decimals()
             .call()
             .await?;
+
+        tracing::trace!(token_a_decimals, token_b_decimals);
 
         Ok((token_a_decimals, token_b_decimals))
     }
@@ -429,6 +434,8 @@ impl UniswapV2Pool {
     }
 
     pub fn get_amount_out(&self, amount_in: U256, reserve_in: U256, reserve_out: U256) -> U256 {
+        tracing::trace!(?amount_in, ?reserve_in, ?reserve_out);
+
         if amount_in.is_zero() || reserve_in.is_zero() || reserve_out.is_zero() {
             return U256::zero();
         }
@@ -436,6 +443,8 @@ impl UniswapV2Pool {
         let amount_in_with_fee = amount_in * U256::from(fee);
         let numerator = amount_in_with_fee * reserve_out;
         let denominator = reserve_in * U256::from(1000) + amount_in_with_fee;
+
+        tracing::trace!(?fee, ?amount_in_with_fee, ?numerator, ?denominator);
 
         numerator / denominator
     }
@@ -576,50 +585,6 @@ pub fn div_uu(x: U256, y: U256) -> Result<u128, ArithmeticError> {
     } else {
         Err(ArithmeticError::YIsZero)
     }
-}
-
-const U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF: U512 =
-    U512([18446744073709551615, 18446744073709551615, 0, 0, 0, 0, 0, 0]);
-
-const U512_384: U512 = U512([384, 0, 0, 0, 0, 0, 0, 0]);
-const U512_256: U512 = U512([256, 0, 0, 0, 0, 0, 0, 0]);
-const U512_128: U512 = U512([128, 0, 0, 0, 0, 0, 0, 0]);
-
-fn mul_uu_to_f64(x: U256, y: U256) -> BigFloat {
-    if x.is_zero() || y.is_zero() {
-        return ZERO;
-    }
-    let result = x.full_mul(y);
-
-    let a = (result >> U512_384).as_u128();
-    let b = ((result >> U512_256) & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
-    let c = ((result >> U512_128) & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
-    let d = (result & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
-
-    let af = BigFloat::from(a) * TWO.pow(&BigFloat::from(384.0));
-    let bf = BigFloat::from(b) * TWO.pow(&BigFloat::from(256.0));
-    let cf = BigFloat::from(c) * TWO.pow(&BigFloat::from(128.0));
-    let df = BigFloat::from(d);
-
-    af + bf + cf + df
-}
-
-fn uu_sqr(x: U256) -> BigFloat {
-    u512_to_f64(x.full_mul(x))
-}
-
-fn u512_to_f64(x: U512) -> BigFloat {
-    let a = (x >> U512_384).as_u128();
-    let b = ((x >> U512_256) & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
-    let c = ((x >> U512_128) & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
-    let d = (x & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
-
-    let af = BigFloat::from(a) * TWO.pow(&BigFloat::from(384.0));
-    let bf = BigFloat::from(b) * TWO.pow(&BigFloat::from(256.0));
-    let cf = BigFloat::from(c) * TWO.pow(&BigFloat::from(128.0));
-    let df = BigFloat::from(d);
-
-    af + bf + cf + df
 }
 
 //Converts a Q64 fixed point to a Q16 fixed point -> f64
