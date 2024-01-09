@@ -11,8 +11,6 @@ use crate::{
     errors::AMMError,
 };
 
-use spinoff::{spinners, Color, Spinner};
-
 pub const U256_10_POW_18: U256 = U256([1000000000000000000, 0, 0, 0]);
 pub const U256_10_POW_6: U256 = U256([1000000, 0, 0, 0]);
 
@@ -28,6 +26,8 @@ pub async fn filter_amms_below_usd_threshold<M: Middleware>(
     step: usize,
     middleware: Arc<M>,
 ) -> Result<Vec<AMM>, AMMError<M>> {
+    tracing::info!("filtering AMMs below USD threshold");
+
     let weth_usd_price = usd_weth_pool.calculate_price(weth)?;
 
     //Init a new vec to hold the filtered AMMs
@@ -52,6 +52,7 @@ pub async fn filter_amms_below_usd_threshold<M: Middleware>(
         }
     }
 
+    tracing::info!("all AMMs filtered");
     Ok(filtered_amms)
 }
 
@@ -66,11 +67,7 @@ pub async fn filter_amms_below_weth_threshold<M: Middleware>(
     step: usize,
     middleware: Arc<M>,
 ) -> Result<Vec<AMM>, AMMError<M>> {
-    let mut spinner = Spinner::new(
-        spinners::Dots,
-        "Filtering AMMs below weth threshold...",
-        Color::Blue,
-    );
+    tracing::info!("filtering AMMs below weth threshold");
 
     let mut filtered_amms = vec![];
 
@@ -91,7 +88,7 @@ pub async fn filter_amms_below_weth_threshold<M: Middleware>(
         }
     }
 
-    spinner.success("All AMMs filtered");
+    tracing::info!("All AMMs filtered");
     Ok(filtered_amms)
 }
 

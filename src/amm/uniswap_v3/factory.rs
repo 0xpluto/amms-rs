@@ -159,6 +159,8 @@ impl UniswapV3Factory {
         let mut aggregated_amms: HashMap<H160, AMM> = HashMap::new();
         let mut ordered_logs: BTreeMap<U64, Vec<Log>> = BTreeMap::new();
 
+        tracing::info!(from_block, to_block, step, "getting all pools from logs");
+
         let mut handles = vec![];
 
         let mut tasks = 0;
