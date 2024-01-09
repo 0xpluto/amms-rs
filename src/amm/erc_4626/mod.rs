@@ -9,7 +9,6 @@ use ethers::{
     providers::Middleware,
     types::{Log, H160, H256, U256},
 };
-use num_bigfloat::BigFloat;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -143,10 +142,6 @@ impl AutomatedMarketMaker for ERC4626Vault {
 
             Ok(amount_out)
         }
-    }
-
-    fn gradient(&self, _token_in: H160, _amount_in: U256) -> Result<BigFloat, SwapSimulationError> {
-        todo!();
     }
 
     fn get_token_out(&self, token_in: H160) -> H160 {

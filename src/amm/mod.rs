@@ -10,7 +10,6 @@ use ethers::{
     providers::Middleware,
     types::{Log, H160, H256, U256},
 };
-use num_bigfloat::BigFloat;
 use serde::{Deserialize, Serialize};
 
 use crate::errors::{AMMError, ArithmeticError, EventLogError, SwapSimulationError};
@@ -40,7 +39,6 @@ pub trait AutomatedMarketMaker {
         token_in: H160,
         amount_in: U256,
     ) -> Result<U256, SwapSimulationError>;
-    fn gradient(&self, token_in: H160, amount: U256) -> Result<BigFloat, SwapSimulationError>;
     fn get_token_out(&self, token_in: H160) -> H160;
     fn opp_token(&self, token: H160) -> Option<H160>;
 }
@@ -122,13 +120,13 @@ impl AutomatedMarketMaker for AMM {
         }
     }
 
-    fn gradient(&self, token_in: H160, amount_in: U256) -> Result<BigFloat, SwapSimulationError> {
-        match self {
-            AMM::UniswapV2Pool(pool) => pool.gradient(token_in, amount_in),
-            AMM::UniswapV3Pool(pool) => pool.gradient(token_in, amount_in),
-            AMM::ERC4626Vault(vault) => vault.gradient(token_in, amount_in),
-        }
-    }
+    // fn gradient(&self, token_in: H160, amount_in: U256) -> Result<BigFloat, SwapSimulationError> {
+    //     match self {
+    //         AMM::UniswapV2Pool(pool) => pool.gradient(token_in, amount_in),
+    //         AMM::UniswapV3Pool(pool) => pool.gradient(token_in, amount_in),
+    //         AMM::ERC4626Vault(vault) => vault.gradient(token_in, amount_in),
+    //     }
+    // }
 
     fn get_token_out(&self, token_in: H160) -> H160 {
         match self {

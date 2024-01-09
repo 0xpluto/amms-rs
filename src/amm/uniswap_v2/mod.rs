@@ -8,9 +8,9 @@ use ethers::{
     abi::{ethabi::Bytes, RawLog, Token},
     prelude::EthEvent,
     providers::Middleware,
-    types::{Log, H160, H256, U256, U512},
+    types::{Log, H160, H256, U256},
 };
-use num_bigfloat::{BigFloat, TWO, ZERO};
+use num_bigfloat::BigFloat;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -205,21 +205,6 @@ impl AutomatedMarketMaker for UniswapV2Pool {
 
             Ok(amount_out)
         }
-    }
-
-    fn gradient(&self, token_in: H160, amount_in: U256) -> Result<BigFloat, SwapSimulationError> {
-        let res0 = U256::from(self.reserve_0);
-        let res1 = U256::from(self.reserve_1);
-        let (res_in, res_out) = if self.token_a == token_in {
-            (res0, res1)
-        } else {
-            (res1, res0)
-        };
-        let num = mul_uu_to_f64(res_in, res_out) * BigFloat::from(997f64);
-        let amount_in_with_fee = (amount_in * 997) / 1000;
-        let denom = uu_sqr(res_in + amount_in_with_fee) * BigFloat::from(1000f64);
-
-        Ok(num / denom)
     }
 
     fn get_token_out(&self, token_in: H160) -> H160 {
@@ -576,50 +561,6 @@ pub fn div_uu(x: U256, y: U256) -> Result<u128, ArithmeticError> {
     } else {
         Err(ArithmeticError::YIsZero)
     }
-}
-
-const U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF: U512 =
-    U512([18446744073709551615, 18446744073709551615, 0, 0, 0, 0, 0, 0]);
-
-const U512_384: U512 = U512([384, 0, 0, 0, 0, 0, 0, 0]);
-const U512_256: U512 = U512([256, 0, 0, 0, 0, 0, 0, 0]);
-const U512_128: U512 = U512([128, 0, 0, 0, 0, 0, 0, 0]);
-
-fn mul_uu_to_f64(x: U256, y: U256) -> BigFloat {
-    if x.is_zero() || y.is_zero() {
-        return ZERO;
-    }
-    let result = x.full_mul(y);
-
-    let a = (result >> U512_384).as_u128();
-    let b = ((result >> U512_256) & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
-    let c = ((result >> U512_128) & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
-    let d = (result & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
-
-    let af = BigFloat::from(a) * TWO.pow(&BigFloat::from(384.0));
-    let bf = BigFloat::from(b) * TWO.pow(&BigFloat::from(256.0));
-    let cf = BigFloat::from(c) * TWO.pow(&BigFloat::from(128.0));
-    let df = BigFloat::from(d);
-
-    af + bf + cf + df
-}
-
-fn uu_sqr(x: U256) -> BigFloat {
-    u512_to_f64(x.full_mul(x))
-}
-
-fn u512_to_f64(x: U512) -> BigFloat {
-    let a = (x >> U512_384).as_u128();
-    let b = ((x >> U512_256) & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
-    let c = ((x >> U512_128) & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
-    let d = (x & U512_0XFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF).as_u128();
-
-    let af = BigFloat::from(a) * TWO.pow(&BigFloat::from(384.0));
-    let bf = BigFloat::from(b) * TWO.pow(&BigFloat::from(256.0));
-    let cf = BigFloat::from(c) * TWO.pow(&BigFloat::from(128.0));
-    let df = BigFloat::from(d);
-
-    af + bf + cf + df
 }
 
 //Converts a Q64 fixed point to a Q16 fixed point -> f64
