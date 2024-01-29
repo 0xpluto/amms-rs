@@ -136,6 +136,9 @@ impl AutomatedMarketMaker for UniswapV3Pool {
             BURN_EVENT_SIGNATURE,
         ]
     }
+    fn sync_on_storage_slots(&self) -> Vec<H256> {
+        todo!();
+    }
 
     fn sync_from_log(&mut self, log: Log) -> Result<(), EventLogError> {
         let event_signature = log.topics[0];

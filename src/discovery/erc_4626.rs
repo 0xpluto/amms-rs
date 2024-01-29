@@ -36,7 +36,7 @@ pub async fn discover_erc_4626_vaults<M: Middleware>(
     let mut adheres_to_deposit_event = HashSet::new();
     let mut identified_addresses = HashSet::new();
 
-    let mut from_block = 0;
+    let mut from_block = 17720000;
     //TODO: make this async
     while from_block < current_block {
         //Get pair created event logs within the block range

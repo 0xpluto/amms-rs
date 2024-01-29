@@ -21,6 +21,7 @@ pub trait AutomatedMarketMaker {
     fn address(&self) -> H160;
     async fn sync<M: Middleware>(&mut self, middleware: Arc<M>) -> Result<(), AMMError<M>>;
     fn sync_on_event_signatures(&self) -> Vec<H256>;
+    fn sync_on_storage_slots(&self) -> Vec<H256>;
     fn tokens(&self) -> Vec<H160>;
     fn calculate_price(&self, base_token: H160) -> Result<f64, ArithmeticError>;
     fn sync_from_log(&mut self, log: Log) -> Result<(), EventLogError>;
@@ -65,6 +66,14 @@ impl AutomatedMarketMaker for AMM {
             AMM::UniswapV2Pool(pool) => pool.sync(middleware).await,
             AMM::UniswapV3Pool(pool) => pool.sync(middleware).await,
             AMM::ERC4626Vault(vault) => vault.sync(middleware).await,
+        }
+    }
+
+    fn sync_on_storage_slots(&self) -> Vec<H256> {
+        match self {
+            AMM::UniswapV2Pool(pool) => pool.sync_on_storage_slots(),
+            AMM::UniswapV3Pool(pool) => pool.sync_on_storage_slots(),
+            AMM::ERC4626Vault(vault) => vault.sync_on_storage_slots(),
         }
     }
 

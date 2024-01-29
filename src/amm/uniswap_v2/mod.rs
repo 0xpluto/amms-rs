@@ -96,6 +96,9 @@ impl AutomatedMarketMaker for UniswapV2Pool {
     fn sync_on_event_signatures(&self) -> Vec<H256> {
         vec![SYNC_EVENT_SIGNATURE]
     }
+    fn sync_on_storage_slots(&self) -> Vec<H256> {
+        vec![RESERVES_STORAGE_SLOT]
+    }
 
     fn sync_from_log(&mut self, log: Log) -> Result<(), EventLogError> {
         let event_signature = log.topics[0];

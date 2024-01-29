@@ -74,6 +74,9 @@ impl AutomatedMarketMaker for ERC4626Vault {
         Ok(())
     }
 
+    fn sync_on_storage_slots(&self) -> Vec<H256> {
+        vec![]
+    }
     fn sync_on_event_signatures(&self) -> Vec<H256> {
         vec![DEPOSIT_EVENT_SIGNATURE, WITHDRAW_EVENT_SIGNATURE]
     }
