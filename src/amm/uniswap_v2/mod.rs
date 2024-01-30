@@ -119,11 +119,13 @@ impl AutomatedMarketMaker for UniswapV2Pool {
     ///
     /// This should be used for speedy syncs, where we only need to update the reserves
     fn sync_from_storage(&mut self, storage: &'_ BTreeMap<H256, H256>) -> Result<(), StorageError> {
-        let value = if let Some(val) = storage.get(&RESERVES_STORAGE_SLOT) {
-            val
-        } else {
-            return Err(StorageError::StorageSlotNotFound);
+        let value = match storage.get(&RESERVES_STORAGE_SLOT) {
+            Some(value) => value,
+            None => return Err(StorageError::StorageSlotNotFound),
         };
+        if value.is_zero() {
+            return Err(StorageError::EmptyStorageSlot);
+        }
 
         let mut reserves1 = value[4..18].to_vec();
         while reserves1.len() < 16 {

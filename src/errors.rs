@@ -91,8 +91,12 @@ pub enum EventLogError {
     ABIError(#[from] AbiError),
 }
 
+#[derive(Error, Debug)]
 pub enum StorageError {
+    #[error("Storage slot not found")]
     StorageSlotNotFound,
+    #[error("Empty storage slot")]
+    EmptyStorageSlot,
 }
 
 #[derive(Error, Debug)]
