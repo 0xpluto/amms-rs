@@ -9,7 +9,7 @@ use std::{
 
 use crate::{
     amm::AutomatedMarketMaker,
-    errors::{AMMError, ArithmeticError, EventLogError, SwapSimulationError},
+    errors::{AMMError, ArithmeticError, EventLogError, StorageError, SwapSimulationError},
 };
 use async_trait::async_trait;
 use ethers::{
@@ -156,7 +156,7 @@ impl AutomatedMarketMaker for UniswapV3Pool {
         Ok(())
     }
 
-    fn sync_from_storage(&mut self, _storage: &'_ BTreeMap<H256, H256>) -> Option<()> {
+    fn sync_from_storage(&mut self, _storage: &'_ BTreeMap<H256, H256>) -> Result<(), StorageError> {
         todo!();
     }
 

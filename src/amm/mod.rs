@@ -12,7 +12,7 @@ use ethers::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::errors::{AMMError, ArithmeticError, EventLogError, SwapSimulationError};
+use crate::errors::{AMMError, ArithmeticError, EventLogError, StorageError, SwapSimulationError};
 
 use self::{erc_4626::ERC4626Vault, uniswap_v2::UniswapV2Pool, uniswap_v3::UniswapV3Pool};
 
@@ -30,7 +30,7 @@ pub trait AutomatedMarketMaker {
         block_number: Option<u64>,
         middleware: Arc<M>,
     ) -> Result<(), AMMError<M>>;
-    fn sync_from_storage(&mut self, diff: &'_ BTreeMap<H256, H256>) -> Option<()>;
+    fn sync_from_storage(&mut self, diff: &'_ BTreeMap<H256, H256>) -> Result<(), StorageError>;
 
     fn reserves(&self) -> BTreeMap<H256, H256>;
 
@@ -93,7 +93,7 @@ impl AutomatedMarketMaker for AMM {
         }
     }
 
-    fn sync_from_storage(&mut self, diff: &'_ BTreeMap<H256, H256>) -> Option<()> {
+    fn sync_from_storage(&mut self, diff: &'_ BTreeMap<H256, H256>) -> Result<(), StorageError> {
         match self {
             AMM::UniswapV2Pool(pool) => pool.sync_from_storage(diff),
             AMM::UniswapV3Pool(pool) => pool.sync_from_storage(diff),

@@ -91,6 +91,10 @@ pub enum EventLogError {
     ABIError(#[from] AbiError),
 }
 
+pub enum StorageError {
+    StorageSlotNotFound,
+}
+
 #[derive(Error, Debug)]
 pub enum SwapSimulationError {
     #[error("Could not get next tick")]

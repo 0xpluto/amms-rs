@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     amm::AutomatedMarketMaker,
-    errors::{AMMError, ArithmeticError, EventLogError, SwapSimulationError},
+    errors::{AMMError, ArithmeticError, EventLogError, StorageError, SwapSimulationError},
 };
 
 use ethers::prelude::abigen;
@@ -99,7 +99,7 @@ impl AutomatedMarketMaker for ERC4626Vault {
         Ok(())
     }
 
-    fn sync_from_storage(&mut self, _storage: &'_ BTreeMap<H256, H256>) -> Option<()> {
+    fn sync_from_storage(&mut self, _storage: &'_ BTreeMap<H256, H256>) -> Result<(), StorageError> {
         todo!();
     }
 

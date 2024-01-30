@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     amm::AutomatedMarketMaker,
-    errors::{AMMError, ArithmeticError, EventLogError, SwapSimulationError},
+    errors::{AMMError, ArithmeticError, EventLogError, StorageError, SwapSimulationError},
 };
 
 use ethers::prelude::abigen;
@@ -118,8 +118,12 @@ impl AutomatedMarketMaker for UniswapV2Pool {
     /// Only updates the reserves, does not fill other pool values
     ///
     /// This should be used for speedy syncs, where we only need to update the reserves
-    fn sync_from_storage(&mut self, storage: &'_ BTreeMap<H256, H256>) -> Option<()> {
-        let value = storage.get(&RESERVES_STORAGE_SLOT)?;
+    fn sync_from_storage(&mut self, storage: &'_ BTreeMap<H256, H256>) -> Result<(), StorageError> {
+        let value = if let Some(val) = storage.get(&RESERVES_STORAGE_SLOT) {
+            val
+        } else {
+            return Err(StorageError::StorageSlotNotFound);
+        };
 
         let mut reserves1 = value[4..18].to_vec();
         while reserves1.len() < 16 {
@@ -134,7 +138,7 @@ impl AutomatedMarketMaker for UniswapV2Pool {
         self.reserve_0 = u128::from_be_bytes(reserves0.try_into().unwrap());
         self.reserve_1 = u128::from_be_bytes(reserves1.try_into().unwrap());
 
-        Some(())
+        Ok(())
     }
 
     fn reserves(&self) -> BTreeMap<H256, H256> {
