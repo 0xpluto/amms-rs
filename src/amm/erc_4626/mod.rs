@@ -99,7 +99,10 @@ impl AutomatedMarketMaker for ERC4626Vault {
         Ok(())
     }
 
-    fn sync_from_storage(&mut self, _storage: &'_ BTreeMap<H256, H256>) -> Result<(), StorageError> {
+    fn sync_from_storage(
+        &mut self,
+        _storage: &'_ BTreeMap<H256, H256>,
+    ) -> Result<(), StorageError> {
         todo!();
     }
 
